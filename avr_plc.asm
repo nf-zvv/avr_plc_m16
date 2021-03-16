@@ -14,6 +14,17 @@
 .def ACCUMULATOR = r15
 
 
+;-------------------------------------------
+;                 Таймер T0                 |
+;-------------------------------------------|
+; время до переполнения таймера в милисекундах
+#define Period_T0 (1)
+; для режима CTC таймера
+; Предделитель 64
+#define CTC_OCR0 (Period_T0*F_CPU/(64*1000))
+
+
+
 ;====================================DATA======================================
 .dseg
 ; Phisical inpunt/outputs (Xi/Yi)
@@ -21,6 +32,18 @@ IN_PORT: 			.byte		1
 OUT_PORT:			.byte		1
 ; Bit variables (Mi)
 MARKERS:			.byte		2
+; Timer enable bits
+TIMER1_EN:			.byte		1	; 1 ms
+TIMER10_EN:			.byte		1	; 10 ms
+TIMER100_EN:		.byte		1	; 100 ms
+; Timer trigger bits
+TIMER1_T:			.byte		1
+TIMER10_T:			.byte		1
+TIMER100_T:			.byte		1
+; Storing the counting value of timers
+TIMER1_POOL:		.byte		8*2
+TIMER10_POOL:		.byte		8*2
+TIMER100_POOL:		.byte		8*2
 ; PWM array
 PWM_ARRAY:			.byte		3
 ; Data variables (Di)
@@ -39,6 +62,26 @@ rjmp	RESET
 ;                           Обработчики прерываний
 ;                             Interrupt Handlers
 ;==============================================================================
+
+;------------------------------------------------------------------------------
+; Timer/Counter0 Compare Match Handler
+;------------------------------------------------------------------------------
+TIM0_OC0_HANDLER:
+			push	r16
+			in		r16,SREG
+			push	r16
+			;----------
+
+
+
+
+TIM0_OVF_HANDLER_EXIT:
+			;----------
+			pop		YH
+			pop		r16
+			out		SREG,r16
+			pop		r16
+			reti
 
 
 
@@ -86,6 +129,23 @@ RESET:
 			out 	DDRD,r16
 			ldi 	r16,0b00000000
 			out 	PORTD,r16
+
+			;------------------------------------------------------------------
+			; CTC Mode for T0
+			; Прерывание по совпадению каждую 1 мс
+			;------------------------------------------------------------------
+			ldi		r16,0
+			OutReg	TCNT0,r16
+			; Настройка предделителя 64, CTC Mode: WGM01 = 1, WGM00 = 0
+			ldi		r16,(0<<CS02)|(1<<CS01)|(1<<CS00)|(1 << WGM01)
+			OutReg	TCCR0,r16
+			; OCR0 = CTC_OCRA
+			ldi		r16,CTC_OCR0
+			OutReg	OCR0,r16
+			; Interrupt Timer/Counter0 Output Compare Match A
+			ldi		r16,(1 << OCIE0)
+			OutReg	TIMSK,r16
+			;------------------------------------------------------------------
 
 			rcall	PWM_INIT
 

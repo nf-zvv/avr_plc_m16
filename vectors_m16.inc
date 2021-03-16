@@ -37,7 +37,7 @@ reti
 .org	INT2addr   	;External Interrupt2
 reti
 .org	OC0addr   	;Output Compare0 Interrupt
-reti
+rjmp	TIM0_OC0_HANDLER
 .org	SPMRaddr	;Store Program Memory Ready Interrupt
 reti
 ; ***** INTERRUPT VECTORS ************************************************
