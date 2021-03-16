@@ -17,7 +17,7 @@
 ;-------------------------------------------
 ;                 Таймер T0                 |
 ;-------------------------------------------|
-; время до переполнения таймера в милисекундах
+; time until Timer0 interrupt
 #define Period_T0 (1)
 ; для режима CTC таймера
 ; Предделитель 64
@@ -47,7 +47,7 @@ TIMER100_POOL:		.byte		8*2
 ; PWM array
 PWM_ARRAY:			.byte		3
 ; Data variables (Di)
-DATA_VAR:			.byte		10*2
+DATA_VAR:			.byte		16*2
 ; Byte code
 PLC_PROGRAM:		.byte		255
 
@@ -136,7 +136,8 @@ RESET:
 			;------------------------------------------------------------------
 			ldi		r16,0
 			OutReg	TCNT0,r16
-			; Настройка предделителя 64, CTC Mode: WGM01 = 1, WGM00 = 0
+			; Настройка предделителя 64, CTC Mode: WGM01 = 1, WGM00 = 0
+
 			ldi		r16,(0<<CS02)|(1<<CS01)|(1<<CS00)|(1 << WGM01)
 			OutReg	TCCR0,r16
 			; OCR0 = CTC_OCRA
@@ -321,6 +322,36 @@ vm_ld:
 
 
 ;------------------------------------------------------------------------------
+; Virtual machine LDN instruction
+; SYNTAX: LDN <input_pin>
+;
+; ARGS: 1 (Xi, Yi, Mi)
+; USED: r16*, YL*, YH*
+; CALLS: BitRead
+; IN: -
+; OUT: -
+;------------------------------------------------------------------------------
+vm_ldn_m:
+			ldi		YL,low(MARKERS)
+			ldi		YH,high(MARKERS)
+			rjmp	vm_ldn
+vm_ldn_y:
+			ldi		YL,low(OUT_PORT)
+			ldi		YH,high(OUT_PORT)
+			rjmp	vm_ldn
+vm_ldn_x:
+			ldi		YL,low(IN_PORT)
+			ldi		YH,high(IN_PORT)
+vm_ldn:
+			ld		r16,X+
+			rcall	BitRead
+			; inverse bit in ACCUMULATOR
+			ldi		r16,1
+			eor		ACCUMULATOR,r16
+			rjmp	vm_loop
+
+
+;------------------------------------------------------------------------------
 ; Virtual machine ST instruction
 ; SYNTAX: ST <output_pin>
 ;
@@ -340,6 +371,32 @@ vm_st_y:
 vm_st:
 			ld		r16,X+
 			rcall	BitWrite
+			rjmp	vm_loop
+
+
+;------------------------------------------------------------------------------
+; Virtual machine STN instruction
+; SYNTAX: STN <output_pin>
+;
+; ARGS: 1 (Yi, Mi)
+; USED: r16*, YL*, YH*
+; CALLS: BitWrite
+; IN: -
+; OUT: -
+;------------------------------------------------------------------------------
+vm_stn_m:
+			ldi		YL,low(MARKERS)
+			ldi		YH,high(MARKERS)
+			rjmp	vm_stn
+vm_stn_y:
+			ldi		YL,low(OUT_PORT)
+			ldi		YH,high(OUT_PORT)
+vm_stn:
+			ld		r16,X+
+			rcall	BitWrite
+			; inverse bit in ACCUMULATOR
+			ldi		r16,1
+			eor		ACCUMULATOR,r16
 			rjmp	vm_loop
 
 
@@ -374,9 +431,9 @@ vm_and:
 
 
 ;------------------------------------------------------------------------------
-; Virtual machine ANDI instruction
+; Virtual machine ANDN instruction
 ; Boolean AND contents of accumulator and inverse of Xi, Yi, Mi
-; SYNTAX: ANDI [Xi, Yi, Mi]
+; SYNTAX: ANDN [Xi, Yi, Mi]
 ;
 ; ARGS: 1
 ; USED: r16*, r18*, YL*, YH*
@@ -384,18 +441,18 @@ vm_and:
 ; IN: -
 ; OUT: -
 ;------------------------------------------------------------------------------
-vm_andi_m:
+vm_andn_m:
 			ldi		YL,low(MARKERS)
 			ldi		YH,high(MARKERS)
-			rjmp	vm_andi
-vm_andi_y:
+			rjmp	vm_andn
+vm_andn_y:
 			ldi		YL,low(OUT_PORT)
 			ldi		YH,high(OUT_PORT)
-			rjmp	vm_andi
-vm_andi_x:
+			rjmp	vm_andn
+vm_andn_x:
 			ldi		YL,low(IN_PORT)
 			ldi		YH,high(IN_PORT)
-vm_andi:
+vm_andn:
 			mov		r18,ACCUMULATOR
 			ld		r16,X+
 			rcall	BitRead
@@ -405,6 +462,7 @@ vm_andi:
 			; AND with previous content of ACCUMULATOR
 			and		ACCUMULATOR,r18
 			rjmp	vm_loop
+
 
 ;------------------------------------------------------------------------------
 ; Virtual machine OR instruction
@@ -437,6 +495,40 @@ vm_or:
 
 
 ;------------------------------------------------------------------------------
+; Virtual machine ORN instruction
+; Boolean OR contents of accumulator and inverse of Xi, Yi, Mi
+; SYNTAX: ORN [Xi, Yi, Mi]
+;
+; ARGS: 1
+; USED: r16*, r18*, YL*, YH*
+; CALLS: BitRead
+; IN: -
+; OUT: -
+;------------------------------------------------------------------------------
+vm_orn_m:
+			ldi		YL,low(MARKERS)
+			ldi		YH,high(MARKERS)
+			rjmp	vm_orn
+vm_orn_y:
+			ldi		YL,low(OUT_PORT)
+			ldi		YH,high(OUT_PORT)
+			rjmp	vm_orn
+vm_orn_x:
+			ldi		YL,low(IN_PORT)
+			ldi		YH,high(IN_PORT)
+vm_orn:
+			mov		r18,ACCUMULATOR
+			ld		r16,X+
+			rcall	BitRead
+			; inverse bit
+			ldi		r16,1
+			eor		ACCUMULATOR,r16
+			; OR with previous content of ACCUMULATOR
+			or		ACCUMULATOR,r18
+			rjmp	vm_loop
+
+
+;------------------------------------------------------------------------------
 ; Virtual machine XOR instruction
 ; 
 ; SYNTAX: XOR [Xi, Yi, Mi]
@@ -462,6 +554,40 @@ vm_xor:
 			mov		r18,ACCUMULATOR
 			ld		r16,X+
 			rcall	BitRead
+			eor		ACCUMULATOR,r18
+			rjmp	vm_loop
+
+
+;------------------------------------------------------------------------------
+; Virtual machine XORN instruction
+; 
+; SYNTAX: XORN [Xi, Yi, Mi]
+;
+; ARGS: 1
+; USED: r16*, r18*, YL*, YH*
+; CALLS: BitRead
+; IN: -
+; OUT: -
+;------------------------------------------------------------------------------
+vm_xorn_m:
+			ldi		YL,low(MARKERS)
+			ldi		YH,high(MARKERS)
+			rjmp	vm_xorn
+vm_xorn_y:
+			ldi		YL,low(OUT_PORT)
+			ldi		YH,high(OUT_PORT)
+			rjmp	vm_xorn
+vm_xorn_x:
+			ldi		YL,low(IN_PORT)
+			ldi		YH,high(IN_PORT)
+vm_xorn:
+			mov		r18,ACCUMULATOR
+			ld		r16,X+
+			rcall	BitRead
+			; inverse bit
+			ldi		r16,1
+			eor		ACCUMULATOR,r16
+			; OR with previous content of ACCUMULATOR
 			eor		ACCUMULATOR,r18
 			rjmp	vm_loop
 
@@ -572,9 +698,78 @@ BitWrite_save:
 			st		Y,r17
 			ret
 
-; Заглушка для пока не реализованных подпрограмм
+
+;------------------------------------------------------------------------------
+; Virtual machine ADD instruction
+; 
+; SYNTAX: ADD Di Ki
+; SYNTAX: ADD Di Di
+;
+; ARGS: 2
+; USED: r16*, r18*, YL*, YH*
+; CALLS: 
+; IN: -
+; OUT: -
+;------------------------------------------------------------------------------
 vm_add_k:
+			tst		ACCUMULATOR
+			brne	vm_add_k_do
+			ld		r16,X+
+			ld		r16,X+
+			ld		r16,X+
+			rjmp	vm_loop
+vm_add_k_do:
+			ld		r16,X+	; first term (var id)
+			ld		r17,X+	; const Hi-byte
+			ld		r18,X+	; const Lo-byte
+			ldi		YL,low(DATA_VAR)
+			ldi		YH,high(DATA_VAR)
+			add		YL,r16
+			adc		YH,__zero_reg__
+			; Load value of var
+			ld		r19,Y+	; var Hi-byte
+			ld		r20,Y+	; var Lo-byte
+			add		r20,r18
+			adc		r19,r17
+			; Store value to var
+			st		-Y,r20
+			st		-Y,r19
+			rjmp	vm_loop
+;------------------------------------------------------------------------------
+; SYNTAX: ADD Di Di
+;------------------------------------------------------------------------------
 vm_add_d:
+			tst		ACCUMULATOR
+			brne	vm_add_k_do
+			ld		r16,X+
+			ld		r16,X+
+			rjmp	vm_loop
+vm_add_k_do:
+			ld		r16,X+	; first term (var id)
+			ld		r17,X+	; second term (var id)
+			ldi		YL,low(DATA_VAR)
+			ldi		YH,high(DATA_VAR)
+			add		YL,r17
+			adc		YH,__zero_reg__
+			; Load second value
+			ld		r18,Y+	; second term Hi-byte
+			ld		r19,Y+	; second term Lo-byte
+			ldi		YL,low(DATA_VAR)
+			ldi		YH,high(DATA_VAR)
+			add		YL,r16
+			adc		YH,__zero_reg__
+			ld		r16,Y+	; first term Hi-byte
+			ld		r17,Y+	; first term Lo-byte
+			; addition
+			add		r17,r19
+			adc		r16,r18
+			; Store value to var
+			st		-Y,r17
+			st		-Y,r16
+			rjmp	vm_loop
+
+
+; Заглушка для пока не реализованных подпрограмм
 vm_sub_k:
 vm_sub_d:
 vm_mul_k:
@@ -589,6 +784,7 @@ vm_mod_d:
 ; Virtual machine PWM instruction
 ; 
 ; SYNTAX: PWM Ki[8] PYi
+; SYNTAX: PWM Di PYi
 ;
 ; ARGS: 1
 ; USED: r16*, r18*, YL*, YH*
@@ -611,18 +807,42 @@ vm_pwm_k_do:
 			adc		YH,__zero_reg__
 			st		Y,r16
 			rjmp	vm_loop
-
+;------------------------------------------------------------------------------
 ; SYNTAX: PWM Di PYi
+;------------------------------------------------------------------------------
 vm_pwm_d:
+			tst		ACCUMULATOR
+			brne	vm_pwm_d_do
+			ld		r16,X+
+			ld		r16,X+
+			rjmp	vm_loop
+vm_pwm_d_do:
+			ld		r16,X+	; duty cycle (var id)
+			ld		r17,X+	; output
+			; Load duty cycle value from var
+			ldi		YL,low(DATA_VAR)
+			ldi		YH,high(DATA_VAR)
+			add		YL,r16
+			adc		YH,__zero_reg__
+			ld		r16,Y+	; extract Hi-byte (it doesn't matter)
+			ld		r16,Y	; extract Lo-byte (PWM duty cycle)
+			; Save value to PWM_ARRAY
+			ldi		YL,low(PWM_ARRAY)
+			ldi		YH,high(PWM_ARRAY)
+			add		YL,r17
+			adc		YH,__zero_reg__
+			st		Y,r16
+			rjmp	vm_loop
 
 
 ;------------------------------------------------------------------------------
 ; Virtual machine MOV instruction
 ; 
 ; SYNTAX: MOV Di Ki[16]
+; SYNTAX: MOV Di Di
 ;
 ; ARGS: 1
-; USED: r16*, r18*, YL*, YH*
+; USED: r16*, r17*, r18*, XL*, XH*, YL*, YH*
 ; CALLS: 
 ; IN: -
 ; OUT: -
@@ -642,11 +862,12 @@ vm_mov_k_do:
 			ldi		YH,high(DATA_VAR)
 			add		YL,r16
 			adc		YH,__zero_reg__
-			st		Y+,r17
-			st		Y,r18
+			st		Y+,r17	; store Hi-byte
+			st		Y,r18	; store Lo-byte
 			rjmp	vm_loop
-
+;------------------------------------------------------------------------------
 ; SYNTAX: MOV Di Di
+;------------------------------------------------------------------------------
 vm_mov_d:
 			tst		ACCUMULATOR
 			brne	vm_mov_d_do
@@ -661,15 +882,15 @@ vm_mov_d_do:
 			ldi		YH,high(DATA_VAR)
 			add		YL,r17
 			adc		YH,__zero_reg__
-			ld		r17,Y+
-			ld		r18,Y
+			ld		r17,Y+	; extract Hi-byte of source value
+			ld		r18,Y	; extract Lo-byte of source value
 			; Store value to destination var
 			ldi		YL,low(DATA_VAR)
 			ldi		YH,high(DATA_VAR)
 			add		YL,r16
 			adc		YH,__zero_reg__
-			st		Y+,r17
-			st		Y,r18
+			st		Y+,r17	; store Hi-byte
+			st		Y,r18	; store Lo-byte
 			rjmp	vm_loop
 
 
@@ -684,36 +905,47 @@ VM_OPERATIONS:
 .db low(vm_ld_x), high(vm_ld_x)    ; 0x01  LD Xi
 .db low(vm_ld_y), high(vm_ld_y)    ; 0x02  LD Yi
 .db low(vm_ld_m), high(vm_ld_m)    ; 0x03  LD Mi
-.db low(vm_st_y), high(vm_st_y)    ; 0x04  ST Yi
-.db low(vm_st_m), high(vm_st_m)    ; 0x05  ST Mi
-.db low(vm_and_x), high(vm_and_x)  ; 0x06  AND Xi
-.db low(vm_and_y), high(vm_and_y)  ; 0x07  AND Yi
-.db low(vm_and_m), high(vm_and_m)  ; 0x08  AND Mi
-.db low(vm_andi_x), high(vm_andi_x); 0x09  ANDI Xi
-.db low(vm_andi_y), high(vm_andi_y); 0x0A  ANDI Yi
-.db low(vm_andi_m), high(vm_andi_m); 0x0B  ANDI Mi
-.db low(vm_or_x), high(vm_or_x)    ; 0x0C  OR Xi
-.db low(vm_or_y), high(vm_or_y)    ; 0x0D  OR Yi
-.db low(vm_or_m), high(vm_or_m)    ; 0x0E  OR Mi
-.db low(vm_xor_x), high(vm_xor_x)  ; 0x0F  XOR Xi
-.db low(vm_xor_y), high(vm_xor_y)  ; 0x10  XOR Yi
-.db low(vm_xor_m), high(vm_xor_m)  ; 0x11  XOR Mi
-.db low(vm_not), high(vm_not)      ; 0x12  NOT
-.db low(vm_add_k), high(vm_add_k)  ; 0x13  ADD Di Ki
-.db low(vm_add_d), high(vm_add_d)  ; 0x14  ADD Di Di
-.db low(vm_sub_k), high(vm_sub_k)  ; 0x15  SUB Di Ki
-.db low(vm_sub_d), high(vm_sub_d)  ; 0x16  SUB Di Di
-.db low(vm_mul_k), high(vm_mul_k)  ; 0x17  MUL Di Ki
-.db low(vm_mul_d), high(vm_mul_d)  ; 0x18  MUL Di Di
-.db low(vm_div_k), high(vm_div_k)  ; 0x19  DIV Di Ki
-.db low(vm_div_d), high(vm_div_d)  ; 0x1A  DIV Di Di
-.db low(vm_mod_k), high(vm_mod_k)  ; 0x1B  MOD Di Ki
-.db low(vm_mod_d), high(vm_mod_d)  ; 0x1C  MOD Di Di
-.db low(vm_pwm_k), high(vm_pwm_k)  ; 0x1D  PWM Ki[8] PYi
-.db low(vm_pwm_d), high(vm_pwm_d)  ; 0x1E  PWM Di PYi
-.db low(vm_mov_k), high(vm_mov_k)  ; 0x1F  MOV Di Ki[16]
-.db low(vm_mov_d), high(vm_mov_d)  ; 0x20  MOV Di Di
-.db low(vm_end), high(vm_end)      ; 0x21  END
+.db low(vm_ldn_x), high(vm_ldn_x)  ; 0x04  LDN Xi
+.db low(vm_ldn_y), high(vm_ldn_y)  ; 0x05  LDN Yi
+.db low(vm_ldn_m), high(vm_ldn_m)  ; 0x06  LDN Mi
+.db low(vm_st_y), high(vm_st_y)    ; 0x07  ST Yi
+.db low(vm_st_m), high(vm_st_m)    ; 0x08  ST Mi
+.db low(vm_stn_y), high(vm_stn_y)  ; 0x09  STN Yi
+.db low(vm_stn_m), high(vm_stn_m)  ; 0x0A  STN Mi
+.db low(vm_and_x), high(vm_and_x)  ; 0x0B  AND Xi
+.db low(vm_and_y), high(vm_and_y)  ; 0x0C  AND Yi
+.db low(vm_and_m), high(vm_and_m)  ; 0x0D  AND Mi
+.db low(vm_andn_x), high(vm_andn_x); 0x0E  ANDN Xi
+.db low(vm_andn_y), high(vm_andn_y); 0x0F  ANDN Yi
+.db low(vm_andn_m), high(vm_andn_m); 0x10  ANDN Mi
+.db low(vm_or_x), high(vm_or_x)    ; 0x11  OR Xi
+.db low(vm_or_y), high(vm_or_y)    ; 0x12  OR Yi
+.db low(vm_or_m), high(vm_or_m)    ; 0x13  OR Mi
+.db low(vm_orn_x), high(vm_orn_x)  ; 0x14  ORN Xi
+.db low(vm_orn_y), high(vm_orn_y)  ; 0x15  ORN Yi
+.db low(vm_orn_m), high(vm_orn_m)  ; 0x16  ORN Mi
+.db low(vm_xor_x), high(vm_xor_x)  ; 0x17  XOR Xi
+.db low(vm_xor_y), high(vm_xor_y)  ; 0x18  XOR Yi
+.db low(vm_xor_m), high(vm_xor_m)  ; 0x19  XOR Mi
+.db low(vm_xorn_x), high(vm_xorn_x); 0x1A  XORN Xi
+.db low(vm_xorn_y), high(vm_xorn_y); 0x1B  XORN Yi
+.db low(vm_xorn_m), high(vm_xorn_m); 0x1C  XORN Mi
+.db low(vm_not), high(vm_not)      ; 0x1D  NOT
+.db low(vm_add_k), high(vm_add_k)  ; 0x1E  ADD Di Ki
+.db low(vm_add_d), high(vm_add_d)  ; 0x1F  ADD Di Di
+.db low(vm_sub_k), high(vm_sub_k)  ; 0x20  SUB Di Ki
+.db low(vm_sub_d), high(vm_sub_d)  ; 0x21  SUB Di Di
+.db low(vm_mul_k), high(vm_mul_k)  ; 0x22  MUL Di Ki
+.db low(vm_mul_d), high(vm_mul_d)  ; 0x23  MUL Di Di
+.db low(vm_div_k), high(vm_div_k)  ; 0x24  DIV Di Ki
+.db low(vm_div_d), high(vm_div_d)  ; 0x25  DIV Di Di
+.db low(vm_mod_k), high(vm_mod_k)  ; 0x26  MOD Di Ki
+.db low(vm_mod_d), high(vm_mod_d)  ; 0x27  MOD Di Di
+.db low(vm_pwm_k), high(vm_pwm_k)  ; 0x28  PWM Ki[8] PYi
+.db low(vm_pwm_d), high(vm_pwm_d)  ; 0x29  PWM Di PYi
+.db low(vm_mov_k), high(vm_mov_k)  ; 0x2A  MOV Di Ki[16]
+.db low(vm_mov_d), high(vm_mov_d)  ; 0x2B  MOV Di Di
+.db low(vm_end), high(vm_end)      ; 0x2C  END
 
 
 
@@ -725,16 +957,16 @@ PROGRAM_SIZE:		.db 21  ; размер программы в байтах
 EEPROM_PLC_PROGRAM:
 ; Single Push button
 .db 0x01, 0x00   ; LD X0
-.db 0x0A, 0x00   ; ANDI Y0
-.db 0x05, 0x01   ; ST M1
+.db 0x0F, 0x00   ; ANDN Y0
+.db 0x08, 0x01   ; ST M1
 ; 
 .db 0x01, 0x00   ; LD X0
-.db 0x07, 0x00   ; AND Y0
-.db 0x05, 0x02   ; ST M2
+.db 0x0C, 0x00   ; AND Y0
+.db 0x08, 0x02   ; ST M2
 ; 
 .db 0x03, 0x01   ; LD M1
-.db 0x0D, 0x00   ; OR Y0
-.db 0x0B, 0x02   ; ANDI M2
-.db 0x04, 0x00   ; ST Y0
-.db 0x21         ; END
+.db 0x12, 0x00   ; OR Y0
+.db 0x10, 0x02   ; ANDN M2
+.db 0x07, 0x00   ; ST Y0
+.db 0x2C         ; END
 
