@@ -8,19 +8,19 @@
 .listmac ; Enable expanding macros
 
 
-; Нулевой регистр
+; РќСѓР»РµРІРѕР№ СЂРµРіРёСЃС‚СЂ
 .def __zero_reg__ = r2
 
 .def ACCUMULATOR = r15
 
 
 ;-------------------------------------------
-;                 Таймер T0                 |
+;                 РўР°Р№РјРµСЂ T0                 |
 ;-------------------------------------------|
 ; time until Timer0 interrupt
 #define Period_T0 (1)
-; для режима CTC таймера
-; Предделитель 64
+; РґР»СЏ СЂРµР¶РёРјР° CTC С‚Р°Р№РјРµСЂР°
+; РџСЂРµРґРґРµР»РёС‚РµР»СЊ 64
 #define CTC_OCR0 (Period_T0*F_CPU/(64*1000))
 
 
@@ -59,12 +59,13 @@ rjmp	RESET
 .include "vectors_m16.inc"
 
 ;==============================================================================
-;                           Обработчики прерываний
+;                           РћР±СЂР°Р±РѕС‚С‡РёРєРё РїСЂРµСЂС‹РІР°РЅРёР№
 ;                             Interrupt Handlers
 ;==============================================================================
 
 ;------------------------------------------------------------------------------
 ; Timer/Counter0 Compare Match Handler
+; 1 ms interrupt
 ;------------------------------------------------------------------------------
 TIM0_OC0_HANDLER:
 			push	r16
@@ -95,13 +96,13 @@ RESET:
 			ldi		r16, high(RAMEND)
 			out		SPH, r16
 
-			; Обнуление памяти и регистров (объем кода: 80 байт прошивки)
+			; РћР±РЅСѓР»РµРЅРёРµ РїР°РјСЏС‚Рё Рё СЂРµРіРёСЃС‚СЂРѕРІ (РѕР±СЉРµРј РєРѕРґР°: 80 Р±Р°Р№С‚ РїСЂРѕС€РёРІРєРё)
 			.include "coreinit.inc"
 
-			; Нулевой регистр
+			; РќСѓР»РµРІРѕР№ СЂРµРіРёСЃС‚СЂ
 			clr		__zero_reg__
 
-			; Аналоговый компаратор выключен
+			; РђРЅР°Р»РѕРіРѕРІС‹Р№ РєРѕРјРїР°СЂР°С‚РѕСЂ РІС‹РєР»СЋС‡РµРЅ
 			ldi		r16,1<<ACD
 			out		ACSR,r16
 
@@ -132,11 +133,11 @@ RESET:
 
 			;------------------------------------------------------------------
 			; CTC Mode for T0
-			; Прерывание по совпадению каждую 1 мс
+			; РџСЂРµСЂС‹РІР°РЅРёРµ РїРѕ СЃРѕРІРїР°РґРµРЅРёСЋ РєР°Р¶РґСѓСЋ 1 РјСЃ
 			;------------------------------------------------------------------
 			ldi		r16,0
 			OutReg	TCNT0,r16
-			; Настройка предделителя 64, CTC Mode: WGM01 = 1, WGM00 = 0
+			; РќР°СЃС‚СЂРѕР№РєР° РїСЂРµРґРґРµР»РёС‚РµР»СЏ 64, CTC Mode: WGM01 = 1, WGM00 = 0
 
 			ldi		r16,(0<<CS02)|(1<<CS01)|(1<<CS00)|(1 << WGM01)
 			OutReg	TCCR0,r16
@@ -152,14 +153,14 @@ RESET:
 
 			rcall	PLC_INIT
 
-			; Загрузить программу из EEPROM
+			; Р—Р°РіСЂСѓР·РёС‚СЊ РїСЂРѕРіСЂР°РјРјСѓ РёР· EEPROM
 			rcall	EEPROM_LOAD_PROGRAM
 			tst		r16
 			brne	START_PLC_PROGRAM
 			rjmp	PROGRAM_NOT_FOUND
 START_PLC_PROGRAM:
 			sei
-			; Инициализиуем указатель на программу в RAM
+			; РРЅРёС†РёР°Р»РёР·РёСѓРµРј СѓРєР°Р·Р°С‚РµР»СЊ РЅР° РїСЂРѕРіСЂР°РјРјСѓ РІ RAM
 			ldi		XL,low(PLC_PROGRAM)
 			ldi		XH,high(PLC_PROGRAM)
 			rjmp	PLC_CYCLE
@@ -182,19 +183,19 @@ PROGRAM_NOT_FOUND:
 ; OUT: r16 = 1 - success
 ;------------------------------------------------------------------------------
 EEPROM_LOAD_PROGRAM:
-			ldi 	r16,low(EEPROM_TEST)	; Загружаем адрес ячейки EEPROM
-			ldi 	r17,high(EEPROM_TEST)	; из которой хотим прочитать байт
+			ldi 	r16,low(EEPROM_TEST)	; Р—Р°РіСЂСѓР¶Р°РµРј Р°РґСЂРµСЃ СЏС‡РµР№РєРё EEPROM
+			ldi 	r17,high(EEPROM_TEST)	; РёР· РєРѕС‚РѕСЂРѕР№ С…РѕС‚РёРј РїСЂРѕС‡РёС‚Р°С‚СЊ Р±Р°Р№С‚
 			rcall 	EERead 					; (OUT: r18)
 			cpi		r18,0xFF
-			breq	EEPROM_EMPTY			; если равно 0xFF - память пуста
-			; считать размер программы
-			ldi 	r16,low(PROGRAM_SIZE)	; Загружаем адрес ячейки EEPROM
-			ldi 	r17,high(PROGRAM_SIZE)	; из которой хотим прочитать байт
+			breq	EEPROM_EMPTY			; РµСЃР»Рё СЂР°РІРЅРѕ 0xFF - РїР°РјСЏС‚СЊ РїСѓСЃС‚Р°
+			; СЃС‡РёС‚Р°С‚СЊ СЂР°Р·РјРµСЂ РїСЂРѕРіСЂР°РјРјС‹
+			ldi 	r16,low(PROGRAM_SIZE)	; Р—Р°РіСЂСѓР¶Р°РµРј Р°РґСЂРµСЃ СЏС‡РµР№РєРё EEPROM
+			ldi 	r17,high(PROGRAM_SIZE)	; РёР· РєРѕС‚РѕСЂРѕР№ С…РѕС‚РёРј РїСЂРѕС‡РёС‚Р°С‚СЊ Р±Р°Р№С‚
 			rcall 	EERead 					; (OUT: r18)
 			
-			mov		r19,r18	; счетчик считанных байтов
-			ldi 	r16,low(EEPROM_PLC_PROGRAM)		; Загружаем адрес ячейки EEPROM
-			ldi 	r17,high(EEPROM_PLC_PROGRAM)	; из которой хотим прочитать байт
+			mov		r19,r18	; СЃС‡РµС‚С‡РёРє СЃС‡РёС‚Р°РЅРЅС‹С… Р±Р°Р№С‚РѕРІ
+			ldi 	r16,low(EEPROM_PLC_PROGRAM)		; Р—Р°РіСЂСѓР¶Р°РµРј Р°РґСЂРµСЃ СЏС‡РµР№РєРё EEPROM
+			ldi 	r17,high(EEPROM_PLC_PROGRAM)	; РёР· РєРѕС‚РѕСЂРѕР№ С…РѕС‚РёРј РїСЂРѕС‡РёС‚Р°С‚СЊ Р±Р°Р№С‚
 			ldi		XL,low(PLC_PROGRAM)
 			ldi		XH,high(PLC_PROGRAM)
 			ldi		r20,1
@@ -208,7 +209,7 @@ EEPROM_LOAD_PROGRAM_LOOP:
 			ldi		r16,1
 			ret
 EEPROM_EMPTY:
-			ldi		r16,0 ; r16 = 0 код ошибки
+			ldi		r16,0 ; r16 = 0 РєРѕРґ РѕС€РёР±РєРё
 			ret
 
 
@@ -229,9 +230,9 @@ PLC_CYCLE:
 ;------------------------------------------------------------------------------
 PLC_INIT:
 			nop
-			; инициализация входов
-			; инициализация выходов
-			; обнуление переменных
+			; РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РІС…РѕРґРѕРІ
+			; РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РІС‹С…РѕРґРѕРІ
+			; РѕР±РЅСѓР»РµРЅРёРµ РїРµСЂРµРјРµРЅРЅС‹С…
 			ret
 
 
@@ -274,9 +275,9 @@ vm_loop:
 			adc		ZH,r1
 			lpm		r24,Z+
 			lpm		r25,Z
-			movw	ZL,r24	; теперь Z указывает на адрес подпрограммы
-			ijmp			; косвенный переход к подпрограмме
-			; в конце ret не ставится, возврат делается из команды
+			movw	ZL,r24	; С‚РµРїРµСЂСЊ Z СѓРєР°Р·С‹РІР°РµС‚ РЅР° Р°РґСЂРµСЃ РїРѕРґРїСЂРѕРіСЂР°РјРјС‹
+			ijmp			; РєРѕСЃРІРµРЅРЅС‹Р№ РїРµСЂРµС…РѕРґ Рє РїРѕРґРїСЂРѕРіСЂР°РјРјРµ
+			; РІ РєРѕРЅС†Рµ ret РЅРµ СЃС‚Р°РІРёС‚СЃСЏ, РІРѕР·РІСЂР°С‚ РґРµР»Р°РµС‚СЃСЏ РёР· РєРѕРјР°РЅРґС‹
 
 
 ;------------------------------------------------------------------------------
@@ -628,16 +629,16 @@ vm_end:
 
 ;------------------------------------------------------------------------------
 ; Bit Read in IN_PORT
-; считать состояние отдельного бита в байте
+; СЃС‡РёС‚Р°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РѕС‚РґРµР»СЊРЅРѕРіРѕ Р±РёС‚Р° РІ Р±Р°Р№С‚Рµ
 ;
 ; USED: r16*, r17*, YL*, YH*, ACCUMULATOR
 ; CALLS: -
-; IN: r16 номер бита bit
+; IN: r16 РЅРѕРјРµСЂ Р±РёС‚Р° bit
 ; OUT: ACCUMULATOR
 ;------------------------------------------------------------------------------
-; Y - указатель на переменную
-; r16 - номер бита
-; r17 - байт
+; Y - СѓРєР°Р·Р°С‚РµР»СЊ РЅР° РїРµСЂРµРјРµРЅРЅСѓСЋ
+; r16 - РЅРѕРјРµСЂ Р±РёС‚Р°
+; r17 - Р±Р°Р№С‚
 BitRead:
 			clr		ACCUMULATOR
 			cpi		r16,8
@@ -649,7 +650,7 @@ BitRead_next_byte:
 BitRead_do:
 			ld		r17,Y
 BitRead_loop:
-			lsr		r17  ; бит во флаге переноса
+			lsr		r17  ; Р±РёС‚ РІРѕ С„Р»Р°РіРµ РїРµСЂРµРЅРѕСЃР°
 			dec		r16
 			brge	BitRead_loop
 			brcc	BitRead_exit
@@ -660,19 +661,19 @@ BitRead_exit:
 
 ;------------------------------------------------------------------------------
 ; Bit Write in OUT_PORT
-; записать отдельный бит в байте
+; Р·Р°РїРёСЃР°С‚СЊ РѕС‚РґРµР»СЊРЅС‹Р№ Р±РёС‚ РІ Р±Р°Р№С‚Рµ
 ;
 ; USED: r16*, r17*, r18*, YL*, YH*, ACCUMULATOR
 ; CALLS: -
-; IN: r16 номер бита bit
+; IN: r16 РЅРѕРјРµСЂ Р±РёС‚Р° bit
 ; OUT: 
 ;------------------------------------------------------------------------------
 BitWrite:
-			; Y - указатель на переменную
-			; r15 - 0/1 - записываемый бит
-			; r16 - номер бита
-			; r17 - байт для модификации
-			; r18 - маска
+			; Y - СѓРєР°Р·Р°С‚РµР»СЊ РЅР° РїРµСЂРµРјРµРЅРЅСѓСЋ
+			; r15 - 0/1 - Р·Р°РїРёСЃС‹РІР°РµРјС‹Р№ Р±РёС‚
+			; r16 - РЅРѕРјРµСЂ Р±РёС‚Р°
+			; r17 - Р±Р°Р№С‚ РґР»СЏ РјРѕРґРёС„РёРєР°С†РёРё
+			; r18 - РјР°СЃРєР°
 			cpi		r16,8
 			brsh	BitWrite_next_byte
 			rjmp	BitWrite_do
@@ -682,9 +683,9 @@ BitWrite_next_byte:
 BitWrite_do:
 			ld		r17,Y
 			clr		r18
-			sec		; Установить флаг переноса
+			sec		; РЈСЃС‚Р°РЅРѕРІРёС‚СЊ С„Р»Р°Рі РїРµСЂРµРЅРѕСЃР°
 BitWrite_loop:
-			rol		r18 ; вставляем справа бит из флага переноса
+			rol		r18 ; РІСЃС‚Р°РІР»СЏРµРј СЃРїСЂР°РІР° Р±РёС‚ РёР· С„Р»Р°РіР° РїРµСЂРµРЅРѕСЃР°
 			dec		r16
 			brge	BitWrite_loop
 			tst		ACCUMULATOR
@@ -706,7 +707,7 @@ BitWrite_save:
 ; SYNTAX: ADD Di Di
 ;
 ; ARGS: 2
-; USED: r16*, r18*, YL*, YH*
+; USED: r16*, r17*, r18*, r19*, XL*, XH*, YL*, YH*
 ; CALLS: 
 ; IN: -
 ; OUT: -
@@ -720,31 +721,32 @@ vm_add_k:
 			rjmp	vm_loop
 vm_add_k_do:
 			ld		r16,X+	; first term (var id)
-			ld		r17,X+	; const Hi-byte
-			ld		r18,X+	; const Lo-byte
+			ld		r18,X+	; const Hi-byte
+			ld		r19,X+	; const Lo-byte
 			ldi		YL,low(DATA_VAR)
 			ldi		YH,high(DATA_VAR)
 			add		YL,r16
 			adc		YH,__zero_reg__
 			; Load value of var
-			ld		r19,Y+	; var Hi-byte
-			ld		r20,Y+	; var Lo-byte
-			add		r20,r18
-			adc		r19,r17
+			ld		r16,Y+	; var Hi-byte
+			ld		r17,Y+	; var Lo-byte
+			; addition
+			add		r17,r19
+			adc		r16,r18
 			; Store value to var
-			st		-Y,r20
-			st		-Y,r19
+			st		-Y,r17
+			st		-Y,r16
 			rjmp	vm_loop
 ;------------------------------------------------------------------------------
 ; SYNTAX: ADD Di Di
 ;------------------------------------------------------------------------------
 vm_add_d:
 			tst		ACCUMULATOR
-			brne	vm_add_k_do
+			brne	vm_add_d_do
 			ld		r16,X+
 			ld		r16,X+
 			rjmp	vm_loop
-vm_add_k_do:
+vm_add_d_do:
 			ld		r16,X+	; first term (var id)
 			ld		r17,X+	; second term (var id)
 			ldi		YL,low(DATA_VAR)
@@ -769,9 +771,78 @@ vm_add_k_do:
 			rjmp	vm_loop
 
 
-; Заглушка для пока не реализованных подпрограмм
+;------------------------------------------------------------------------------
+; Virtual machine SUB instruction
+; 
+; SYNTAX: SUB Di Ki
+; SYNTAX: SUB Di Di
+;
+; ARGS: 2
+; USED: r16*, r17*, r18*, r19*, XL*, XH*, YL*, YH*
+; CALLS: 
+; IN: -
+; OUT: -
+;------------------------------------------------------------------------------
 vm_sub_k:
+			tst		ACCUMULATOR
+			brne	vm_sub_k_do
+			ld		r16,X+
+			ld		r16,X+
+			ld		r16,X+
+			rjmp	vm_loop
+vm_sub_k_do:
+			ld		r16,X+	; minuend (var id)
+			ld		r18,X+	; subtrahend const Hi-byte
+			ld		r19,X+	; subtrahend const Lo-byte
+			ldi		YL,low(DATA_VAR)
+			ldi		YH,high(DATA_VAR)
+			add		YL,r16
+			adc		YH,__zero_reg__
+			; Load value of var
+			ld		r16,Y+	; var Hi-byte
+			ld		r17,Y+	; var Lo-byte
+			; subtraction
+			sub		r17,r19
+			sbc		r16,r18
+			; Store value to var
+			st		-Y,r17
+			st		-Y,r16
+			rjmp	vm_loop
+;------------------------------------------------------------------------------
+; SYNTAX: SUB Di Di
+;------------------------------------------------------------------------------
 vm_sub_d:
+			tst		ACCUMULATOR
+			brne	vm_sub_d_do
+			ld		r16,X+
+			ld		r16,X+
+			rjmp	vm_loop
+vm_sub_d_do:
+			ld		r16,X+	; minuend (var id)
+			ld		r17,X+	; subtrahend (var id)
+			ldi		YL,low(DATA_VAR)
+			ldi		YH,high(DATA_VAR)
+			add		YL,r17
+			adc		YH,__zero_reg__
+			; Load second value
+			ld		r18,Y+	; subtrahend Hi-byte
+			ld		r19,Y+	; subtrahend Lo-byte
+			ldi		YL,low(DATA_VAR)
+			ldi		YH,high(DATA_VAR)
+			add		YL,r16
+			adc		YH,__zero_reg__
+			ld		r16,Y+	; minuend Hi-byte
+			ld		r17,Y+	; minuend Lo-byte
+			; subtraction
+			sub		r17,r19
+			sbc		r16,r18
+			; Store value to var
+			st		-Y,r17
+			st		-Y,r16
+			rjmp	vm_loop
+
+
+; Р—Р°РіР»СѓС€РєР° РґР»СЏ РїРѕРєР° РЅРµ СЂРµР°Р»РёР·РѕРІР°РЅРЅС‹С… РїРѕРґРїСЂРѕРіСЂР°РјРј
 vm_mul_k:
 vm_mul_d:
 vm_div_k:
@@ -779,6 +850,7 @@ vm_div_d:
 vm_mod_k:
 vm_mod_d:
 			rjmp	vm_loop
+
 
 ;------------------------------------------------------------------------------
 ; Virtual machine PWM instruction
@@ -899,7 +971,7 @@ vm_mov_d_do:
 
 
 ;============================= FLASH Constants ==============================
-; Таблица адресов команд
+; РўР°Р±Р»РёС†Р° Р°РґСЂРµСЃРѕРІ РєРѕРјР°РЅРґ
 VM_OPERATIONS:
 .db low(vm_nop), high(vm_nop)      ; 0x00  NOP
 .db low(vm_ld_x), high(vm_ld_x)    ; 0x01  LD Xi
@@ -952,8 +1024,8 @@ VM_OPERATIONS:
 ;================================= EEPROM ===================================
 .eseg
 .org 0x100
-EEPROM_TEST:		.db 0   ; для проверки, если равно 0xFF, то EEPROM чиста
-PROGRAM_SIZE:		.db 21  ; размер программы в байтах
+EEPROM_TEST:		.db 0   ; РґР»СЏ РїСЂРѕРІРµСЂРєРё, РµСЃР»Рё СЂР°РІРЅРѕ 0xFF, С‚Рѕ EEPROM С‡РёСЃС‚Р°
+PROGRAM_SIZE:		.db 21  ; СЂР°Р·РјРµСЂ РїСЂРѕРіСЂР°РјРјС‹ РІ Р±Р°Р№С‚Р°С…
 EEPROM_PLC_PROGRAM:
 ; Single Push button
 .db 0x01, 0x00   ; LD X0
