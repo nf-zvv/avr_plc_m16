@@ -1,8 +1,9 @@
 #define F_CPU (16000000)
 
 .nolist
-.include "m16def.inc"
+.include "m16Adef.inc"
 .include "macro.asm"
+.include "LCD4_macro.inc"
 .include "eeprom_macro.asm"
 .list
 .listmac ; Enable expanding macros
@@ -100,7 +101,7 @@ Timer0_COMPA:
 ;
 inputa:
 		in		r18,PINA			; Read Port A
-		andi	r18,0b11111111		; Mask off bits ...
+		andi	r18,0b00001111		; Mask off bits ...
 ;
 		lds		r17,paim			; Get previous scan image
 		sts		paim,r18			; Save this scan as previous image
@@ -230,6 +231,8 @@ RESET:
 			OutReg	TIMSK,r16
 			;------------------------------------------------------------------
 
+			INIT_LCD
+
 			rcall	PWM_INIT
 
 			rcall	PLC_INIT
@@ -240,6 +243,12 @@ RESET:
 			brne	START_PLC_PROGRAM
 			rjmp	PROGRAM_NOT_FOUND
 START_PLC_PROGRAM:
+			LCDCLR				; очистка экрана
+			LCD_COORD 0,0		; курсор
+			; Вывести строку на дисплей
+			ldi		ZL,low(PROGRAM_RUN_const*2)
+			ldi		ZH,high(PROGRAM_RUN_const*2)
+			rcall	FLASH_CONST_TO_LCD
 			sei
 			; Инициализиуем указатель на программу в RAM
 			ldi		XL,low(PLC_PROGRAM)
@@ -249,7 +258,14 @@ START_PLC_PROGRAM:
 
 
 PROGRAM_NOT_FOUND:
-			rjmp	PROGRAM_NOT_FOUND
+			LCDCLR				; очистка экрана
+			LCD_COORD 0,0		; курсор
+			; Вывести строку на дисплей
+			ldi		ZL,low(NO_PROGRAM_const*2)
+			ldi		ZH,high(NO_PROGRAM_const*2)
+			rcall	FLASH_CONST_TO_LCD
+PROGRAM_NOT_FOUND_LOOP:
+			rjmp	PROGRAM_NOT_FOUND_LOOP
 
 
 
@@ -1049,11 +1065,49 @@ vm_mov_d_do:
 			rjmp	vm_loop
 
 
+
+;-----------------------------------------------------------------------------
+; Отправка на LCD константы из flash памяти
+; Используются: r17*, Z*
+; Вход: Z - указатель на строку
+; Выход: LCD
+;-----------------------------------------------------------------------------
+FLASH_CONST_TO_LCD:
+			lpm		r17,Z+					; изалеч очередной символ из flash
+			tst		r17						; провериь, не 0 ли он
+			breq	FLASH_CONST_TO_LCD_END	; если ноль, то строка кончилась
+			rcall	DATA_WR					; поместить символ в буфер отправки
+			rjmp	FLASH_CONST_TO_LCD
+FLASH_CONST_TO_LCD_END:
+			ret
+
+
+;------------------------------------------------------------------------------
+; Вывод null-ended строки на дисплей
+; Используются: r17*, Y*
+; Вход: Y - указатель на строку
+; Выход: LCD
+;------------------------------------------------------------------------------
+STR_TO_LCD:
+			ld		r17,Y+					; изалеч очередной символ
+			tst		r17						; провериь, не 0 ли он
+			breq	STR_TO_LCD_END			; если ноль, то строка кончилась
+			rcall	DATA_WR					; поместить символ в буфер отправки
+			rjmp	STR_TO_LCD
+STR_TO_LCD_END:
+			ret
+
+
 .include "eeprom.asm"
 .include "pwm.asm"
+.include "LCD4.asm"
 
 
 ;============================= FLASH Constants ==============================
+NO_PROGRAM_const:			.db "NO PROGRAM",0,0
+PROGRAM_RUN_const:			.db "PROGRAM: RUN",0,0
+PROGRAM_STOP_const:			.db "PROGRAM: STOP",0
+
 ; Таблица адресов команд
 VM_OPERATIONS:
 .db low(vm_nop), high(vm_nop)      ; 0x00  NOP
