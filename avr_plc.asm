@@ -8,20 +8,20 @@
 .listmac ; Enable expanding macros
 
 
-; РќСѓР»РµРІРѕР№ СЂРµРіРёСЃС‚СЂ
+; Нулевой регистр
 .def __zero_reg__ = r2
 
 .def ACCUMULATOR = r15
 
 
 ;-------------------------------------------
-;                 РўР°Р№РјРµСЂ T0                 |
+;                 Таймер T0                 |
 ;-------------------------------------------|
 ; time until Timer0 interrupt
-#define Period_T0 (1)
-; РґР»СЏ СЂРµР¶РёРјР° CTC С‚Р°Р№РјРµСЂР°
-; РџСЂРµРґРґРµР»РёС‚РµР»СЊ 64
-#define CTC_OCR0 (Period_T0*F_CPU/(64*1000))
+#define Period_T0 (4.096)
+; для режима CTC таймера
+; Предделитель 1024
+#define CTC_OCR0 (Period_T0*F_CPU/(1024*1000))
 
 
 
@@ -52,6 +52,27 @@ DATA_VAR:			.byte		16*2
 PLC_PROGRAM:		.byte		255
 
 
+; Port image buffers
+pa:
+.byte	1			; Port A image buffer
+
+; Port A debounce buffers
+paim:
+.byte	1			; Previous port A scan image
+pal:
+.byte	1			; Port A leading edge bits
+pat:
+.byte	1			; Port A trailding edge bits
+pad:
+.byte	1			; Port A double action bits
+padb:
+.byte	1			; Port A debounced image
+dbr1:
+.byte	1			; Debounce result register 1
+dbr2:
+.byte	1			; Debounce result register 2
+
+
 ;====================================CODE======================================
 .cseg
 .org 0000
@@ -59,7 +80,7 @@ rjmp	RESET
 .include "vectors_m16.inc"
 
 ;==============================================================================
-;                           РћР±СЂР°Р±РѕС‚С‡РёРєРё РїСЂРµСЂС‹РІР°РЅРёР№
+;                           Обработчики прерываний
 ;                             Interrupt Handlers
 ;==============================================================================
 
@@ -67,18 +88,77 @@ rjmp	RESET
 ; Timer/Counter0 Compare Match Handler
 ; 1 ms interrupt
 ;------------------------------------------------------------------------------
-TIM0_OC0_HANDLER:
+Timer0_COMPA:
 			push	r16
 			in		r16,SREG
 			push	r16
+			push	r17
+			push	r18
 			;----------
-
-
-
-
-TIM0_OVF_HANDLER_EXIT:
+;
+; Read and debounce Input Port PC5...PC0 bits ---
+;
+inputa:
+		in		r18,PINA			; Read Port A
+		andi	r18,0b11111111		; Mask off bits ...
+;
+		lds		r17,paim			; Get previous scan image
+		sts		paim,r18			; Save this scan as previous image
+		eor		r17,r18				; 1 = changed bit, 0 = no change
+		sts		dbr1,r17			; Save bit pattern of changes
+		com		r17					; 0 = changed bit, 1 = no change
+		and		r17,r18				; Changed bits cleared to 0
+		sts		dbr2,r17			; Save input with changed bits = 0
+;
+;  Merge in debounced bits to the old input image, keeping the old bits in
+;  the positions that are not debounced. That is, an input bit is not
+;  changed from its old state until it is debounced, since it could be
+;  flipping on each scan cycle.
+;
+		lds		r17,pa				; Get old debounced input image
+		lds		r16,dbr1			; 1 = changed bit, 0 = no change
+		and		r17,r16				; 0 = debounced positions
+		lds		r16,dbr2
+		or		r17,r16				; Merge in new debounced bits
+		lds		r16,pa				; Save old input image
+		sts		dbr2,r16
+		sts		pa,r17				; Update new debounced input image
+;
+;  Process -ve transitions for counter inputs ANDing the complemented
+;  scan image with the changed bit mask in DBR1. Merge result with the
+;  trailing edge trigger byte, pat.
+;
+		mov		r17,r18				; Get input port reading
+		com		r17					; Invert port reading
+		lds		r16,dbr1
+		and		r17,r16				; Isolate -ve transitions
+		lds		r16,pat
+		or		r16,r17				; Merge to trigger byte
+		sts		pat,r16				; Save result back to pat
+;
+;  Process +ve transition bits by ANDing bits in the scan image with the
+;  changed bits mask in DBR1 to generate 1's in positions with 0 to 1
+;  transitions in DBR1. Merge this resut to the transition image byte.
+;
+		mov		r17,r18				; Get input port reading
+		lds		r16,dbr1
+		and		r17,r16				; Isolate +ve transitions
+		lds		r16,pal
+		or		r16,r17				; Merge to trigger byte
+		sts		pal,r17				; Save result back to pal
+;
+;  Process double action bits. Each double action output bit acts as a
+;  flip flop that change output state on each 0 to 1 transition of the
+;  input bit. Each input bit has a corresponding double action output bit.
+;
+		lds		r16,pad				; Process double action changes
+		eor		r17,r16
+		sts		pad,r17				; Save result back to pad
+;
+Timer0_COMPA_EXIT:
 			;----------
-			pop		YH
+			pop		r18
+			pop		r17
 			pop		r16
 			out		SREG,r16
 			pop		r16
@@ -96,23 +176,23 @@ RESET:
 			ldi		r16, high(RAMEND)
 			out		SPH, r16
 
-			; РћР±РЅСѓР»РµРЅРёРµ РїР°РјСЏС‚Рё Рё СЂРµРіРёСЃС‚СЂРѕРІ (РѕР±СЉРµРј РєРѕРґР°: 80 Р±Р°Р№С‚ РїСЂРѕС€РёРІРєРё)
+			; Обнуление памяти и регистров (объем кода: 80 байт прошивки)
 			.include "coreinit.inc"
 
-			; РќСѓР»РµРІРѕР№ СЂРµРіРёСЃС‚СЂ
+			; Нулевой регистр
 			clr		__zero_reg__
 
-			; РђРЅР°Р»РѕРіРѕРІС‹Р№ РєРѕРјРїР°СЂР°С‚РѕСЂ РІС‹РєР»СЋС‡РµРЅ
+			; Аналоговый компаратор выключен
 			ldi		r16,1<<ACD
 			out		ACSR,r16
 
-			; Port A Init
+			; Port A Init - for input, pull-ups activated
 			ldi		r16,0b00000000
 			out		DDRA,r16
 			ldi		r16,0b11111111
 			out		PORTA,r16
 
-			; Port B Init
+			; Port B Init - for output
 			ldi		r16,0b11111111
 			out		DDRB,r16
 			ldi		r16,0b00000000
@@ -133,19 +213,20 @@ RESET:
 
 			;------------------------------------------------------------------
 			; CTC Mode for T0
-			; РџСЂРµСЂС‹РІР°РЅРёРµ РїРѕ СЃРѕРІРїР°РґРµРЅРёСЋ РєР°Р¶РґСѓСЋ 1 РјСЃ
+			; Прерывание по совпадению каждую 4.096 мс
 			;------------------------------------------------------------------
 			ldi		r16,0
 			OutReg	TCNT0,r16
-			; РќР°СЃС‚СЂРѕР№РєР° РїСЂРµРґРґРµР»РёС‚РµР»СЏ 64, CTC Mode: WGM01 = 1, WGM00 = 0
+			; Настройка предделителя 1024, CTC Mode: WGM01 = 1, WGM00 = 0
 
-			ldi		r16,(0<<CS02)|(1<<CS01)|(1<<CS00)|(1 << WGM01)
+			ldi		r16,(1<<CS02)|(0<<CS01)|(1<<CS00)|(1 << WGM01)
 			OutReg	TCCR0,r16
-			; OCR0 = CTC_OCRA
-			ldi		r16,CTC_OCR0
+			; Set OCR0 = 64 for 4.096 ms period
+			ldi		r16,64
 			OutReg	OCR0,r16
 			; Interrupt Timer/Counter0 Output Compare Match A
-			ldi		r16,(1 << OCIE0)
+			lds		r16,TIMSK
+			sbr		r16,(1 << OCIE0)
 			OutReg	TIMSK,r16
 			;------------------------------------------------------------------
 
@@ -153,14 +234,14 @@ RESET:
 
 			rcall	PLC_INIT
 
-			; Р—Р°РіСЂСѓР·РёС‚СЊ РїСЂРѕРіСЂР°РјРјСѓ РёР· EEPROM
+			; Загрузить программу из EEPROM
 			rcall	EEPROM_LOAD_PROGRAM
 			tst		r16
 			brne	START_PLC_PROGRAM
 			rjmp	PROGRAM_NOT_FOUND
 START_PLC_PROGRAM:
 			sei
-			; РРЅРёС†РёР°Р»РёР·РёСѓРµРј СѓРєР°Р·Р°С‚РµР»СЊ РЅР° РїСЂРѕРіСЂР°РјРјСѓ РІ RAM
+			; Инициализиуем указатель на программу в RAM
 			ldi		XL,low(PLC_PROGRAM)
 			ldi		XH,high(PLC_PROGRAM)
 			rjmp	PLC_CYCLE
@@ -183,19 +264,19 @@ PROGRAM_NOT_FOUND:
 ; OUT: r16 = 1 - success
 ;------------------------------------------------------------------------------
 EEPROM_LOAD_PROGRAM:
-			ldi 	r16,low(EEPROM_TEST)	; Р—Р°РіСЂСѓР¶Р°РµРј Р°РґСЂРµСЃ СЏС‡РµР№РєРё EEPROM
-			ldi 	r17,high(EEPROM_TEST)	; РёР· РєРѕС‚РѕСЂРѕР№ С…РѕС‚РёРј РїСЂРѕС‡РёС‚Р°С‚СЊ Р±Р°Р№С‚
+			ldi 	r16,low(EEPROM_TEST)	; Загружаем адрес ячейки EEPROM
+			ldi 	r17,high(EEPROM_TEST)	; из которой хотим прочитать байт
 			rcall 	EERead 					; (OUT: r18)
 			cpi		r18,0xFF
-			breq	EEPROM_EMPTY			; РµСЃР»Рё СЂР°РІРЅРѕ 0xFF - РїР°РјСЏС‚СЊ РїСѓСЃС‚Р°
-			; СЃС‡РёС‚Р°С‚СЊ СЂР°Р·РјРµСЂ РїСЂРѕРіСЂР°РјРјС‹
-			ldi 	r16,low(PROGRAM_SIZE)	; Р—Р°РіСЂСѓР¶Р°РµРј Р°РґСЂРµСЃ СЏС‡РµР№РєРё EEPROM
-			ldi 	r17,high(PROGRAM_SIZE)	; РёР· РєРѕС‚РѕСЂРѕР№ С…РѕС‚РёРј РїСЂРѕС‡РёС‚Р°С‚СЊ Р±Р°Р№С‚
+			breq	EEPROM_EMPTY			; если равно 0xFF - память пуста
+			; считать размер программы
+			ldi 	r16,low(PROGRAM_SIZE)	; Загружаем адрес ячейки EEPROM
+			ldi 	r17,high(PROGRAM_SIZE)	; из которой хотим прочитать байт
 			rcall 	EERead 					; (OUT: r18)
 			
-			mov		r19,r18	; СЃС‡РµС‚С‡РёРє СЃС‡РёС‚Р°РЅРЅС‹С… Р±Р°Р№С‚РѕРІ
-			ldi 	r16,low(EEPROM_PLC_PROGRAM)		; Р—Р°РіСЂСѓР¶Р°РµРј Р°РґСЂРµСЃ СЏС‡РµР№РєРё EEPROM
-			ldi 	r17,high(EEPROM_PLC_PROGRAM)	; РёР· РєРѕС‚РѕСЂРѕР№ С…РѕС‚РёРј РїСЂРѕС‡РёС‚Р°С‚СЊ Р±Р°Р№С‚
+			mov		r19,r18	; счетчик считанных байтов
+			ldi 	r16,low(EEPROM_PLC_PROGRAM)		; Загружаем адрес ячейки EEPROM
+			ldi 	r17,high(EEPROM_PLC_PROGRAM)	; из которой хотим прочитать байт
 			ldi		XL,low(PLC_PROGRAM)
 			ldi		XH,high(PLC_PROGRAM)
 			ldi		r20,1
@@ -209,7 +290,7 @@ EEPROM_LOAD_PROGRAM_LOOP:
 			ldi		r16,1
 			ret
 EEPROM_EMPTY:
-			ldi		r16,0 ; r16 = 0 РєРѕРґ РѕС€РёР±РєРё
+			ldi		r16,0 ; r16 = 0 код ошибки
 			ret
 
 
@@ -230,9 +311,9 @@ PLC_CYCLE:
 ;------------------------------------------------------------------------------
 PLC_INIT:
 			nop
-			; РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РІС…РѕРґРѕРІ
-			; РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РІС‹С…РѕРґРѕРІ
-			; РѕР±РЅСѓР»РµРЅРёРµ РїРµСЂРµРјРµРЅРЅС‹С…
+			; инициализация входов
+			; инициализация выходов
+			; обнуление переменных
 			ret
 
 
@@ -241,7 +322,9 @@ PLC_INIT:
 ; 
 ;------------------------------------------------------------------------------
 READ_INPUTS:
-			in		r16,PINA
+			;in		r16,PINA
+			;com		r16
+			lds		r16,pa
 			com		r16
 			sts		IN_PORT,r16
 			ret
@@ -275,9 +358,9 @@ vm_loop:
 			adc		ZH,r1
 			lpm		r24,Z+
 			lpm		r25,Z
-			movw	ZL,r24	; С‚РµРїРµСЂСЊ Z СѓРєР°Р·С‹РІР°РµС‚ РЅР° Р°РґСЂРµСЃ РїРѕРґРїСЂРѕРіСЂР°РјРјС‹
-			ijmp			; РєРѕСЃРІРµРЅРЅС‹Р№ РїРµСЂРµС…РѕРґ Рє РїРѕРґРїСЂРѕРіСЂР°РјРјРµ
-			; РІ РєРѕРЅС†Рµ ret РЅРµ СЃС‚Р°РІРёС‚СЃСЏ, РІРѕР·РІСЂР°С‚ РґРµР»Р°РµС‚СЃСЏ РёР· РєРѕРјР°РЅРґС‹
+			movw	ZL,r24	; теперь Z указывает на адрес подпрограммы
+			ijmp			; косвенный переход к подпрограмме
+			; в конце ret не ставится, возврат делается из команды
 
 
 ;------------------------------------------------------------------------------
@@ -629,16 +712,16 @@ vm_end:
 
 ;------------------------------------------------------------------------------
 ; Bit Read in IN_PORT
-; СЃС‡РёС‚Р°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РѕС‚РґРµР»СЊРЅРѕРіРѕ Р±РёС‚Р° РІ Р±Р°Р№С‚Рµ
+; считать состояние отдельного бита в байте
 ;
 ; USED: r16*, r17*, YL*, YH*, ACCUMULATOR
 ; CALLS: -
-; IN: r16 РЅРѕРјРµСЂ Р±РёС‚Р° bit
+; IN: r16 номер бита bit
 ; OUT: ACCUMULATOR
 ;------------------------------------------------------------------------------
-; Y - СѓРєР°Р·Р°С‚РµР»СЊ РЅР° РїРµСЂРµРјРµРЅРЅСѓСЋ
-; r16 - РЅРѕРјРµСЂ Р±РёС‚Р°
-; r17 - Р±Р°Р№С‚
+; Y - указатель на переменную
+; r16 - номер бита
+; r17 - байт
 BitRead:
 			clr		ACCUMULATOR
 			cpi		r16,8
@@ -650,7 +733,7 @@ BitRead_next_byte:
 BitRead_do:
 			ld		r17,Y
 BitRead_loop:
-			lsr		r17  ; Р±РёС‚ РІРѕ С„Р»Р°РіРµ РїРµСЂРµРЅРѕСЃР°
+			lsr		r17  ; бит во флаге переноса
 			dec		r16
 			brge	BitRead_loop
 			brcc	BitRead_exit
@@ -661,19 +744,19 @@ BitRead_exit:
 
 ;------------------------------------------------------------------------------
 ; Bit Write in OUT_PORT
-; Р·Р°РїРёСЃР°С‚СЊ РѕС‚РґРµР»СЊРЅС‹Р№ Р±РёС‚ РІ Р±Р°Р№С‚Рµ
+; записать отдельный бит в байте
 ;
 ; USED: r16*, r17*, r18*, YL*, YH*, ACCUMULATOR
 ; CALLS: -
-; IN: r16 РЅРѕРјРµСЂ Р±РёС‚Р° bit
+; IN: r16 номер бита bit
 ; OUT: 
 ;------------------------------------------------------------------------------
 BitWrite:
-			; Y - СѓРєР°Р·Р°С‚РµР»СЊ РЅР° РїРµСЂРµРјРµРЅРЅСѓСЋ
-			; r15 - 0/1 - Р·Р°РїРёСЃС‹РІР°РµРјС‹Р№ Р±РёС‚
-			; r16 - РЅРѕРјРµСЂ Р±РёС‚Р°
-			; r17 - Р±Р°Р№С‚ РґР»СЏ РјРѕРґРёС„РёРєР°С†РёРё
-			; r18 - РјР°СЃРєР°
+			; Y - указатель на переменную
+			; r15 - 0/1 - записываемый бит
+			; r16 - номер бита
+			; r17 - байт для модификации
+			; r18 - маска
 			cpi		r16,8
 			brsh	BitWrite_next_byte
 			rjmp	BitWrite_do
@@ -683,9 +766,9 @@ BitWrite_next_byte:
 BitWrite_do:
 			ld		r17,Y
 			clr		r18
-			sec		; РЈСЃС‚Р°РЅРѕРІРёС‚СЊ С„Р»Р°Рі РїРµСЂРµРЅРѕСЃР°
+			sec		; Установить флаг переноса
 BitWrite_loop:
-			rol		r18 ; РІСЃС‚Р°РІР»СЏРµРј СЃРїСЂР°РІР° Р±РёС‚ РёР· С„Р»Р°РіР° РїРµСЂРµРЅРѕСЃР°
+			rol		r18 ; вставляем справа бит из флага переноса
 			dec		r16
 			brge	BitWrite_loop
 			tst		ACCUMULATOR
@@ -842,7 +925,7 @@ vm_sub_d_do:
 			rjmp	vm_loop
 
 
-; Р—Р°РіР»СѓС€РєР° РґР»СЏ РїРѕРєР° РЅРµ СЂРµР°Р»РёР·РѕРІР°РЅРЅС‹С… РїРѕРґРїСЂРѕРіСЂР°РјРј
+; Заглушка для пока не реализованных подпрограмм
 vm_mul_k:
 vm_mul_d:
 vm_div_k:
@@ -971,7 +1054,7 @@ vm_mov_d_do:
 
 
 ;============================= FLASH Constants ==============================
-; РўР°Р±Р»РёС†Р° Р°РґСЂРµСЃРѕРІ РєРѕРјР°РЅРґ
+; Таблица адресов команд
 VM_OPERATIONS:
 .db low(vm_nop), high(vm_nop)      ; 0x00  NOP
 .db low(vm_ld_x), high(vm_ld_x)    ; 0x01  LD Xi
@@ -1024,8 +1107,8 @@ VM_OPERATIONS:
 ;================================= EEPROM ===================================
 .eseg
 .org 0x100
-EEPROM_TEST:		.db 0   ; РґР»СЏ РїСЂРѕРІРµСЂРєРё, РµСЃР»Рё СЂР°РІРЅРѕ 0xFF, С‚Рѕ EEPROM С‡РёСЃС‚Р°
-PROGRAM_SIZE:		.db 21  ; СЂР°Р·РјРµСЂ РїСЂРѕРіСЂР°РјРјС‹ РІ Р±Р°Р№С‚Р°С…
+EEPROM_TEST:		.db 0   ; для проверки, если равно 0xFF, то EEPROM чиста
+PROGRAM_SIZE:		.db 21  ; размер программы в байтах
 EEPROM_PLC_PROGRAM:
 ; Single Push button
 .db 0x01, 0x00   ; LD X0
