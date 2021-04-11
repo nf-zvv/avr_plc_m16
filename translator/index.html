@@ -1,0 +1,46 @@
+<html lang="ru">
+	<head>
+		<title>IL Translator</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<link rel="stylesheet" href="codemirror.css">
+		<link rel="stylesheet" href="cobalt.css">
+		<link rel="stylesheet" href="style.css">
+		<script src="codemirror.js"></script>
+		<script src="il.js"></script>
+		<script src="main.js"></script>
+	</head>
+	<body>
+		<div class="container" >
+			<div class="column">
+				<form name="translator">
+					<div class="row rowspan">
+						IL code:
+						<textarea name="editor"></textarea>
+						<input type="button" name="open_code" value="Open">
+						<input type="button" name="save_code" value="Save">
+						<input type="button" name="translate" value="Translate">
+					</div>
+				</form>
+			</div>
+			<div class="column">
+				<div class="row">
+					Bytecode:
+					<textarea rows="30" cols="50" id="bytecode"></textarea>
+					<input type="button" name="save_bytecode" value="Save">
+				</div>
+				<div class="row">
+					Status:
+					<table id="status">
+					<thead>
+						<tr>
+							<th class="icon"></th><th class="line">Line №</th><th class="description">Description</th>
+						</tr>
+					</thead>
+					<tbody></tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>
