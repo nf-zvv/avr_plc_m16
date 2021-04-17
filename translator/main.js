@@ -372,14 +372,42 @@ function parse(str){
 		console.error("Syntax error: " + cmd);
 	}
 }
-		
-function toIntelHEX(startAddress, byteArray){
-	
-	
+
+function saveTextAsFile() {
+	var textToWrite = document.getElementById('intelhex').value;
+	var textFileAsBlob = new Blob([ textToWrite ], { type: 'text/plain' });
+	var fileNameToSaveAs = "UserFile.eep"; //filename.extension
+
+	var downloadLink = document.createElement("a");
+	downloadLink.download = fileNameToSaveAs;
+	downloadLink.innerHTML = "Download File";
+	if (window.webkitURL != null) {
+		// Chrome allows the link to be clicked without actually adding it to the DOM.
+		downloadLink.href = window.webkitURL.createObjectURL(textFileAsBlob);
+	} else {
+		// Firefox requires the link to be added to the DOM before it can be clicked.
+		downloadLink.href = window.URL.createObjectURL(textFileAsBlob);
+		downloadLink.onclick = destroyClickedElement;
+		downloadLink.style.display = "none";
+		document.body.appendChild(downloadLink);
+	}
+	downloadLink.click();
+}
+
+function destroyClickedElement(event) {
+	// remove the link from the DOM
+	document.body.removeChild(event.target);
 }
 		
 window.onload = function() {
-	let bytecode = document.getElementById("bytecode");
+	let byteCodeArea = document.getElementById("bytecode");
+	let intelHexArea = document.getElementById("intelhex");
+	
+	let startAddress = document.getElementById("start_address");
+	let recordSize = document.getElementById("record_size");
+	
+	let saveIntelHexBtn = document.getElementById('save_intelhex');
+	saveIntelHexBtn.addEventListener('click', saveTextAsFile);
 
 	var ed = CodeMirror.fromTextArea(translator.editor, {
         theme: "cobalt",
@@ -394,7 +422,7 @@ window.onload = function() {
 		
 		//console.log(lines);
 		
-		bytecode.value = "";
+		byteCodeArea.value = "";
 		
 		let statusTable = document.getElementById("status").children[1];
 		
@@ -406,34 +434,48 @@ window.onload = function() {
 			let item = parse(lines[i]);
 			if (item == -1){
 				let msg = 'Unknown command: ' + lines[i];
-				addRow(statusTable, [" ", (i+1), msg]);
+				addRow(statusTable, ["Err", (i+1), msg]);
 			}
 			else if (item == -2){
 				let msg = 'Syntax error: unknown operand in ' + lines[i];
-				addRow(statusTable, [" ", (i+1), msg]);
+				addRow(statusTable, ["Err", (i+1), msg]);
 			}
 			else if (item == -3){
 				let msg = 'Syntax error: extra operand in ' + lines[i];
-				addRow(statusTable, [" ", (i+1), msg]);
+				addRow(statusTable, ["Err", (i+1), msg]);
 			}
 			else if (item == -4){
 				let msg = 'Syntax error: expected operand in ' + lines[i];
-				addRow(statusTable, [" ", (i+1), msg]);
+				addRow(statusTable, ["Err", (i+1), msg]);
 			}
 			else {
 				item.forEach(function(byte){
 					bytecodeArray.push(byte);
 				});
-				//bytecode.value += item;
+				//byteCodeArea.value += item;
 			}
 		}
 		
-		bytecode.value = bytecodeArray.join(', ');
+		byteCodeArea.value = bytecodeArray.join(', ');
 		
+		let byteCodeLength = bytecodeArray.length;
 		
-				
-		//lines.forEach(parse);
-
+		let msg = 'Translated ' + byteCodeLength + ' bytes.';
+		addRow(statusTable, ["", " ", msg]);
+		
+		let data = bytecodeArray.slice();
+		// First byte is zero (to check the cleanliness of the EEPROM)
+		data.unshift(0);
+		// Second byte is bytecode length
+		data.unshift(byteCodeLength);
+		
+		// Convert to Intel HEX format
+		let memMap = new MemoryMap();
+		let bytes = new Uint8Array(data);
+		memMap.set(parseInt(startAddress.value), bytes);
+		let hexString = memMap.asHexString(lineSize=parseInt(recordSize.value));
+		intelHexArea.value = hexString;
+		
 	}
 	
 	

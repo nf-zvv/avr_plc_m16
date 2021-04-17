@@ -44,10 +44,17 @@ textarea {
 	font-size: 1.5em;
 }
 #bytecode {
-	height: 300px;
+	height: 200px;
+}
+#intelhex {
+	height: 200px;
 }
 #statusarea {
 	height: 150px;
+}
+input.conf {
+	width: 50px;
+	text-align: right;
 }
 table, tr {
 	border: 3px solid #003E65;

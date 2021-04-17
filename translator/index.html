@@ -8,6 +8,7 @@
 		<link rel="stylesheet" href="style.css">
 		<script src="codemirror.js"></script>
 		<script src="il.js"></script>
+		<script src="intel-hex.js"></script>
 		<script src="main.js"></script>
 	</head>
 	<body>
@@ -27,7 +28,14 @@
 				<div class="row">
 					Bytecode:
 					<textarea rows="30" cols="50" id="bytecode"></textarea>
-					<input type="button" name="save_bytecode" value="Save">
+					<input type="button" id="save_bytecode" value="Save">
+				</div>
+				<div class="row">
+					Intel HEX:<br/>
+					Start address: <input class="conf" id="start_address" value="0x100">
+					Record size: <input class="conf" id="record_size" value="16"></br>
+					<textarea rows="30" cols="50" id="intelhex"></textarea>
+					<input type="button" id="save_intelhex" value="Save">
 				</div>
 				<div class="row">
 					Status:
