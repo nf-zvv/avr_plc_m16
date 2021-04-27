@@ -231,7 +231,7 @@ RESET:
 			OutReg	TIMSK,r16
 			;------------------------------------------------------------------
 
-			INIT_LCD
+			;INIT_LCD
 
 			rcall	PWM_INIT
 
@@ -248,7 +248,7 @@ START_PLC_PROGRAM:
 			; Вывести строку на дисплей
 			ldi		ZL,low(PROGRAM_RUN_const*2)
 			ldi		ZH,high(PROGRAM_RUN_const*2)
-			rcall	FLASH_CONST_TO_LCD
+			;rcall	FLASH_CONST_TO_LCD
 			sei
 			; Инициализиуем указатель на программу в RAM
 			ldi		XL,low(PLC_PROGRAM)
@@ -256,7 +256,10 @@ START_PLC_PROGRAM:
 			rjmp	PLC_CYCLE
 
 
-
+;------------------------------------------------------------------------------
+; Program not found in EEPROM
+; 
+;------------------------------------------------------------------------------
 PROGRAM_NOT_FOUND:
 			LCDCLR				; очистка экрана
 			LCD_COORD 0,0		; курсор
@@ -318,6 +321,7 @@ PLC_CYCLE:
 			rcall	READ_INPUTS
 			rcall	vm_loop
 			rcall	WRITE_OUTPUTS
+			rcall	WRITE_PWM
 			rjmp	PLC_CYCLE
 
 
@@ -353,6 +357,20 @@ READ_INPUTS:
 WRITE_OUTPUTS:
 			lds		r16,OUT_PORT
 			out		PORTB,r16
+			ret
+
+
+;------------------------------------------------------------------------------
+; Write PWM outputs
+; 
+;------------------------------------------------------------------------------
+WRITE_PWM:
+			lds		r16,PWM_ARRAY+0
+			rcall	PWM0_SET
+			lds		r16,PWM_ARRAY+1
+			rcall	PWM1_SET
+			lds		r16,PWM_ARRAY+2
+			rcall	PWM2_SET
 			ret
 
 
@@ -724,6 +742,78 @@ vm_end:
 			ldi		XL,low(PLC_PROGRAM)
 			ldi		XH,high(PLC_PROGRAM)
 			ret
+
+;------------------------------------------------------------------------------
+; Virtual machine SET instruction
+; SYNTAX: SET <output_pin>
+;
+; ARGS: 1 (Yi, Mi)
+; USED: r16*, YL*, YH*
+; CALLS: BitWrite
+; IN: -
+; OUT: -
+;------------------------------------------------------------------------------
+vm_set_m:
+			tst		ACCUMULATOR
+			brne	vm_set_m_do
+			ld		r16,X+
+			rjmp	vm_loop
+vm_set_m_do:
+			ldi		YL,low(MARKERS)
+			ldi		YH,high(MARKERS)
+			rjmp	vm_set
+;-------------------------------------
+vm_set_y:
+			tst		ACCUMULATOR
+			brne	vm_set_y_do
+			ld		r16,X+
+			rjmp	vm_loop
+vm_set_y_do:
+			ldi		YL,low(OUT_PORT)
+			ldi		YH,high(OUT_PORT)
+;-------------------------------------
+vm_set:
+			ld		r16,X+
+			rcall	BitWrite
+			rjmp	vm_loop
+
+
+;------------------------------------------------------------------------------
+; Virtual machine RST instruction
+; SYNTAX: SET <output_pin>
+;
+; ARGS: 1 (Yi, Mi)
+; USED: r16*, YL*, YH*
+; CALLS: BitWrite
+; IN: -
+; OUT: -
+;------------------------------------------------------------------------------
+vm_rst_m:
+			tst		ACCUMULATOR
+			brne	vm_rst_m_do
+			ld		r16,X+
+			rjmp	vm_loop
+vm_rst_m_do:
+			ldi		YL,low(MARKERS)
+			ldi		YH,high(MARKERS)
+			rjmp	vm_rst
+;-------------------------------------
+vm_rst_y:
+			tst		ACCUMULATOR
+			brne	vm_rst_y_do
+			ld		r16,X+
+			rjmp	vm_loop
+vm_rst_y_do:
+			ldi		YL,low(OUT_PORT)
+			ldi		YH,high(OUT_PORT)
+;-------------------------------------
+vm_rst:
+			clr		ACCUMULATOR
+			ld		r16,X+
+			rcall	BitWrite
+			ldi		r16,1
+			mov		ACCUMULATOR,r16
+			rjmp	vm_loop
 
 
 ;------------------------------------------------------------------------------
@@ -1155,6 +1245,10 @@ VM_OPERATIONS:
 .db low(vm_mov_k), high(vm_mov_k)  ; 0x2A  MOV Di Ki[16]
 .db low(vm_mov_d), high(vm_mov_d)  ; 0x2B  MOV Di Di
 .db low(vm_end), high(vm_end)      ; 0x2C  END
+.db low(vm_set_y), high(vm_set_y)  ; 0x2D  SET Yi
+.db low(vm_set_m), high(vm_set_m)  ; 0x2E  SET Mi
+.db low(vm_rst_y), high(vm_rst_y)  ; 0x2F  RST Yi
+.db low(vm_rst_m), high(vm_rst_m)  ; 0x30  RST Mi
 
 
 
@@ -1162,20 +1256,21 @@ VM_OPERATIONS:
 .eseg
 .org 0x100
 EEPROM_TEST:		.db 0   ; для проверки, если равно 0xFF, то EEPROM чиста
-PROGRAM_SIZE:		.db 21  ; размер программы в байтах
+PROGRAM_SIZE:		.db 17  ; размер программы в байтах
 EEPROM_PLC_PROGRAM:
-; Single Push button
+; SET and RST test program
+;
 .db 0x01, 0x00   ; LD X0
-.db 0x0F, 0x00   ; ANDN Y0
-.db 0x08, 0x01   ; ST M1
-; 
-.db 0x01, 0x00   ; LD X0
-.db 0x0C, 0x00   ; AND Y0
-.db 0x08, 0x02   ; ST M2
-; 
-.db 0x03, 0x01   ; LD M1
-.db 0x12, 0x00   ; OR Y0
-.db 0x10, 0x02   ; ANDN M2
-.db 0x07, 0x00   ; ST Y0
+.db 0x2d, 0x00   ; SET Y0
+;
+.db 0x01, 0x01   ; LD X1
+.db 0x2f, 0x00   ; RST Y0
+;
+.db 0x01, 0x02   ; LD X2
+.db 0x2d, 0x01   ; SET Y1
+;
+.db 0x01, 0x03   ; LD X3
+.db 0x2f, 0x01   ; RST Y1
+;
 .db 0x2C         ; END
 
